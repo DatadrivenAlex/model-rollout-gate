@@ -1,0 +1,29 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    env:
+      OMP_NUM_THREADS: "1"
+    strategy:
+      matrix:
+        python: ['3.11', '3.12', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked
+      - run: uv run --locked ruff check .
+      - run: uv run --locked ruff format --check .
+      - run: uv run --locked pytest -q
+      - run: |
+          set -e
+          uv run --locked python examples/make_demo.py demo-output/pass.jsonl
+          uv run --locked rollout-gate demo-output/pass.jsonl --policy examples/policy.json --out demo-output/pass.json
+          uv run --locked python examples/make_demo.py demo-output/block.jsonl --regress
+          code=0
+          uv run --locked rollout-gate demo-output/block.jsonl --policy examples/policy.json --out demo-output/block.json || code=$?
+          test "$code" -eq 2
